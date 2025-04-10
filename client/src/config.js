@@ -1,10 +1,10 @@
-const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+const isDevelopment = process.env.NODE_ENV !== 'production';
 
 const config = {
   // Use localhost for development, and the deployed backend URL for production
   SERVER_URL: isDevelopment 
     ? 'http://localhost:5000' 
-    : 'https://vanilla-backend.onrender.com',
+    : 'https://vanilla-2na6.onrender.com',
   
   // API endpoints
   API: {
