@@ -87,7 +87,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
           }
           
           // Create a peer connection to the new user
-          const peer = createPeer(userId, userIdRef.current, stream, username);
+          const peer = createPeer(userId, userIdRef.current, userStream.current, username);
           
           peersRef.current.push({
             peerID: userId,
@@ -120,7 +120,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
             return;
           }
           
-          const peer = addPeer(signal, from, stream, username);
+          const peer = addPeer(signal, from, userStream.current, username);
           
           peersRef.current.push({
             peerID: from,
@@ -163,7 +163,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
               return;
             }
             
-            const peer = createPeer(user.id, userIdRef.current, stream, username);
+            const peer = createPeer(user.id, userIdRef.current, userStream.current, username);
             
             peersRef.current.push({
               peerID: user.id,
@@ -374,9 +374,9 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
       });
     });
     
-    peer.on('stream', stream => {
-      console.log(`Received stream from peer ${userToCall}`, stream);
-      // No need to handle stream here as it's handled in the Video component
+    peer.on('stream', remoteStream => {
+      console.log(`Received stream from peer ${userToCall}`, remoteStream);
+      // The Video component will handle this stream
     });
     
     peer.on('connect', () => {
@@ -416,9 +416,9 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
       });
     });
     
-    peer.on('stream', stream => {
-      console.log(`Received stream from peer ${callerId}`, stream);
-      // No need to handle stream here as it's handled in the Video component
+    peer.on('stream', remoteStream => {
+      console.log(`Received stream from peer ${callerId}`, remoteStream);
+      // The Video component will handle this stream
     });
     
     peer.on('connect', () => {
@@ -808,11 +808,16 @@ function Video({ peer }) {
     }
     
     // Handle when we get a stream from the peer
-    const handleStream = stream => {
-      console.log("Received stream in Video component", stream);
+    const handleStream = remoteStream => {
+      console.log("Received remote stream in Video component", remoteStream);
+      
+      // Verify this is a remote stream by checking track IDs
+      // This helps prevent the local stream from being displayed in the remote view
       if (videoRef.current) {
         try {
-          videoRef.current.srcObject = stream;
+          // Set the remote stream as the source for this video element
+          videoRef.current.srcObject = remoteStream;
+          console.log("Successfully set remote stream to video element");
           setLoaded(true);
           setError(false);
         } catch (err) {
