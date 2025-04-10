@@ -41,7 +41,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     clearCachedSessionData();
     
     // Connect to the server
-    socketRef.current = io.connect(config.SERVER_URL);
+    socketRef.current = io.connect(config.SOCKET_URL);
     
     // Generate a unique user ID
     userIdRef.current = generateUserId();

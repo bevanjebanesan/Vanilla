@@ -1,10 +1,15 @@
-const isDevelopment = process.env.NODE_ENV !== 'production';
+const isDevelopment = process.env.REACT_APP_NODE_ENV !== 'production';
 
 const config = {
   // Use localhost for development, and the deployed backend URL for production
-  SERVER_URL: isDevelopment 
+  SERVER_URL: process.env.REACT_APP_SERVER_URL || (isDevelopment 
     ? 'http://localhost:5000' 
-    : 'https://vanilla-2na6.onrender.com',
+    : 'https://vanilla-2na6.onrender.com'),
+  
+  // Socket URL (same as server URL in most cases)
+  SOCKET_URL: process.env.REACT_APP_SOCKET_URL || (isDevelopment 
+    ? 'http://localhost:5000' 
+    : 'https://vanilla-2na6.onrender.com'),
   
   // API endpoints
   API: {
