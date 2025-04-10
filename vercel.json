@@ -1,17 +1,8 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "client/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "client/build",
-        "buildCommand": "cd client && npm install && npm run build"
-      }
-    }
-  ],
-  "routes": [
-    { "src": "/(.*)", "dest": "/client/build/$1" }
+  "buildCommand": "cd client && npm install && NODE_OPTIONS=--openssl-legacy-provider npm run build",
+  "outputDirectory": "client/build",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
   ],
   "env": {
     "NODE_OPTIONS": "--openssl-legacy-provider"
