@@ -1,14 +1,23 @@
 {
   "version": 2,
   "public": true,
-  "github": {
-    "enabled": false
-  },
-  "routes": [
-    { "src": "/m/(.*)", "dest": "/index.html" },
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
+  "rewrites": [
+    { "source": "/m/:id", "destination": "/index.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, DELETE, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "X-Requested-With, Content-Type, Accept" }
+      ]
+    }
+  ],
+  "github": {
+    "silent": true
+  },
   "env": {
     "REACT_APP_NODE_ENV": "production",
     "REACT_APP_SERVER_URL": "https://vanilla-2na6.onrender.com",
