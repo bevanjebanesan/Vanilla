@@ -19,17 +19,43 @@ function App() {
     localStorage.removeItem('vanilla_username');
     localStorage.removeItem('vanilla_meetingId');
     
-    const params = new URLSearchParams(window.location.search);
-    const joinMeetingId = params.get('join');
-    
-    if (joinMeetingId) {
-      setMeetingId(joinMeetingId);
-      setAction('join');
-      setShowNameInput(true);
+    // Handle direct meeting links - check both URL formats
+    const checkForMeetingId = () => {
+      // First check query parameters
+      const params = new URLSearchParams(window.location.search);
+      const joinMeetingId = params.get('join');
       
-      // Clean up the URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
+      if (joinMeetingId) {
+        console.log(`Found meeting ID in query params: ${joinMeetingId}`);
+        setMeetingId(joinMeetingId);
+        setAction('join');
+        setShowNameInput(true);
+        
+        // Clean up the URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+        return true;
+      }
+      
+      // Then check hash fragment (for compatibility with some sharing methods)
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const hashJoinId = hashParams.get('join');
+      
+      if (hashJoinId) {
+        console.log(`Found meeting ID in hash fragment: ${hashJoinId}`);
+        setMeetingId(hashJoinId);
+        setAction('join');
+        setShowNameInput(true);
+        
+        // Clean up the URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+        return true;
+      }
+      
+      return false;
+    };
+    
+    // Try to find meeting ID in URL
+    checkForMeetingId();
   }, []);
 
   const handleCreateMeeting = () => {

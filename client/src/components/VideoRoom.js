@@ -497,19 +497,23 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
   
   // Function to copy meeting link to clipboard
   const copyMeetingLink = () => {
-    const meetingLink = `${window.location.origin}?join=${roomId}`;
+    // Use hash fragment instead of query parameter to avoid Vercel authentication issues
+    const meetingLink = `${window.location.origin}/#join=${roomId}`;
     navigator.clipboard.writeText(meetingLink)
       .then(() => {
-        // Show the link in an alert so the user can see it
-        alert(`Meeting link copied to clipboard!\n\n${meetingLink}`);
+        alert('Meeting link copied to clipboard!');
       })
-      .catch(err => console.error('Failed to copy meeting link:', err));
+      .catch(err => {
+        console.error('Failed to copy meeting link:', err);
+        alert('Failed to copy meeting link. Please try again.');
+      });
   };
   
   // Function to share meeting via email
   const shareMeetingViaEmail = () => {
-    const meetingLink = `${window.location.origin}?join=${roomId}`;
-    const subject = 'Join my Vanilla video meeting';
+    // Use hash fragment instead of query parameter to avoid Vercel authentication issues
+    const meetingLink = `${window.location.origin}/#join=${roomId}`;
+    const subject = `Join my Vanilla video meeting`;
     const body = `Join my meeting using this link: ${meetingLink}`;
     window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   };
