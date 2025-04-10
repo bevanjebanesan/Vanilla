@@ -47,122 +47,108 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     }
     
     // Connect to the server
-    socketRef.current = io.connect(config.SOCKET_URL, {
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000
-    });
+    try {
+      console.log('Connecting to socket server at:', config.SOCKET_URL);
+      socketRef.current = io.connect(config.SOCKET_URL, {
+        transports: ['websocket'],
+        query: {
+          roomId,
+          username
+        }
+      });
+      
+      // Verify socket connection
+      if (!socketRef.current || typeof socketRef.current.on !== 'function') {
+        console.error('Socket not initialized properly');
+        return;
+      }
+      
+      // Handle socket connection error
+      socketRef.current.on('connect_error', (error) => {
+        console.error('Socket connection error:', error);
+      });
+      
+      // Handle socket connection timeout
+      socketRef.current.on('connect_timeout', () => {
+        console.error('Socket connection timeout');
+      });
+      
+      // Handle successful connection
+      socketRef.current.on('connect', () => {
+        console.log('Successfully connected to socket server');
+        
+        // Get the user's ID from the socket
+        userIdRef.current = socketRef.current.id;
+        console.log('Your socket ID:', userIdRef.current);
+        
+        // Initialize user media after socket connection is established
+        initializeUserMedia();
+      });
+    } catch (error) {
+      console.error('Error initializing socket connection:', error);
+    }
     
-    // Get user media
+    // Cleanup function
+    return () => {
+      if (socketRef.current) {
+        console.log('Disconnecting socket');
+        socketRef.current.disconnect();
+      }
+    };
+  }, [roomId, username]);
+  
+  // Separate useEffect for initializing user media
+  const initializeUserMedia = () => {
+    // Get user's audio and video
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
-        console.log('Got local media stream');
+        console.log('Got local user media stream:', stream);
+        
+        // Set the local stream
         userStream.current = stream;
         
+        // Set the local video element's srcObject to the stream
         if (userVideo.current) {
           userVideo.current.srcObject = stream;
         }
         
-        // Join the room
-        socketRef.current.emit('join-room', roomId, null, username);
+        // Join the room after media is initialized
+        if (socketRef.current) {
+          console.log('Joining room:', roomId);
+          socketRef.current.emit('join-room', roomId, username);
+          
+          // Set up socket event listeners for room interactions
+          setupSocketEventListeners();
+        } else {
+          console.error('Socket not available when trying to join room');
+        }
+      })
+      .catch(error => {
+        console.error('Error getting user media:', error);
+      });
+  };
+  
+  // Set up socket event listeners
+  const setupSocketEventListeners = () => {
+    if (!socketRef.current || typeof socketRef.current.on !== 'function') {
+      console.error('Socket not initialized properly in setupSocketEventListeners');
+      return;
+    }
+    
+    // Handle room data
+    socketRef.current.on('room-data', data => {
+      console.log('Received room data:', data);
+      
+      // Store the user's ID
+      userIdRef.current = data.userId;
+      
+      // Create peer connections with existing users
+      if (data.users && data.users.length > 0) {
+        console.log('Creating peer connections with existing users:', data.users);
         
-        // Get user ID from server
-        socketRef.current.on('your-id', id => {
-          console.log(`My ID is ${id}`);
-          userIdRef.current = id;
-          
-          // Fetch meeting data after getting user ID
-          fetchMeetingData();
-        });
-        
-        // Handle new user joining
-        socketRef.current.on('user-joined', (userId, username) => {
-          console.log(`User ${username} (${userId}) joined the room`);
-          
-          // Check if we already have this peer
-          if (peersRef.current.some(p => p.peerID === userId)) {
-            console.log(`Already connected to ${username} (${userId}), skipping duplicate connection`);
-            return;
-          }
-          
-          // Create a peer connection to the new user
-          const peer = createPeer(userId, userIdRef.current, userStream.current, username);
-          
-          // Store peer with metadata
-          const peerObj = {
-            peerID: userId,
-            peer,
-            username
-          };
-          
-          peersRef.current.push(peerObj);
-          
-          // Update the state to trigger re-render
-          setPeers(prevPeers => {
-            // Check if this peer is already in the array
-            if (prevPeers.some(p => p.peerID === userId)) {
-              return prevPeers;
-            }
-            return [...prevPeers, peerObj];
-          });
-        });
-        
-        // Handle incoming calls
-        socketRef.current.on('callIncoming', ({ signal, from, name }) => {
-          console.log(`Incoming call from ${name} (${from})`);
-          
-          // Check if we already have this peer
-          const existingPeer = peersRef.current.find(p => p.peerID === from);
-          if (existingPeer) {
-            console.log(`Already connected to ${name} (${from}), updating signal`);
-            existingPeer.peer.signal(signal);
-            return;
-          }
-          
-          // Create a new peer connection as the receiver
-          const peer = addPeer(signal, from, userStream.current, username);
-          
-          // Store peer with metadata
-          const peerObj = {
-            peerID: from,
-            peer,
-            username: name
-          };
-          
-          peersRef.current.push(peerObj);
-          
-          // Update the state to trigger re-render
-          setPeers(prevPeers => {
-            // Check if this peer is already in the array
-            if (prevPeers.some(p => p.peerID === from)) {
-              return prevPeers;
-            }
-            return [...prevPeers, peerObj];
-          });
-        });
-        
-        // Handle accepted calls
-        socketRef.current.on('callAccepted', ({ signal, from, name }) => {
-          console.log(`Call accepted by ${name} (${from})`);
-          
-          const item = peersRef.current.find(p => p.peerID === from);
-          if (item) {
-            item.peer.signal(signal);
-          }
-        });
-        
-        // Get all users currently in the room
-        socketRef.current.on('all-users', users => {
-          console.log('All users in room:', users);
-          
-          // Create peer connections to all existing users
-          users.forEach(user => {
-            // Check if we already have this peer
-            if (peersRef.current.some(p => p.peerID === user.id)) {
-              console.log(`Already connected to ${user.username} (${user.id}), skipping`);
-              return;
-            }
+        data.users.forEach(user => {
+          if (user.id !== userIdRef.current) {
+            console.log(`Creating peer connection with ${user.username} (${user.id})`);
             
             const peer = createPeer(user.id, userIdRef.current, userStream.current, username);
             
@@ -183,97 +169,199 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
               }
               return [...prevPeers, peerObj];
             });
-          });
-        });
-        
-        // Handle user leaving
-        socketRef.current.on('user-left', userId => {
-          console.log(`User ${userId} left the room`);
-          
-          // Find and remove the peer connection
-          const peerObj = peersRef.current.find(p => p.peerID === userId);
-          if (peerObj) {
-            peerObj.peer.destroy();
           }
-          
-          // Remove from peers array
-          const peers = peersRef.current.filter(p => p.peerID !== userId);
-          peersRef.current = peers;
-          setPeers(peers);
         });
-        
-        // Handle chat messages
-        socketRef.current.on('receive-message', message => {
-          console.log('Received message:', message);
-          
-          // Generate a unique ID for the message if it doesn't have one
-          if (!message.id) {
-            message.id = `${message.userId}-${Date.now()}`;
-          }
-          
-          setMessages(prevMessages => {
-            // Check if this message is already in the array (prevent duplicates)
-            const isDuplicate = prevMessages.some(m => 
-              m.id === message.id || 
-              (m.userId === message.userId && 
-               m.timestamp === message.timestamp && 
-               m.message === message.message)
-            );
-            
-            if (isDuplicate) {
-              console.log('Duplicate message detected, not adding to state');
-              return prevMessages;
-            }
-            
-            const newMessages = [...prevMessages, message];
-            
-            // Scroll to bottom of chat
-            setTimeout(() => {
-              if (chatEndRef.current) {
-                chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
-              }
-            }, 100);
-            
-            return newMessages;
-          });
-        });
-        
-        // Handle transcripts
-        socketRef.current.on('receive-transcript', transcriptData => {
-          console.log('Received transcript:', transcriptData);
-          
-          // Generate a unique ID for the transcript if it doesn't have one
-          if (!transcriptData.id) {
-            transcriptData.id = `${transcriptData.userId}-${Date.now()}`;
-          }
-          
-          setTranscripts(prevTranscripts => {
-            // Check if this transcript is already in the array (prevent duplicates)
-            const isDuplicate = prevTranscripts.some(t => 
-              t.id === transcriptData.id || 
-              (t.userId === transcriptData.userId && 
-               t.timestamp === transcriptData.timestamp && 
-               t.transcript === transcriptData.transcript)
-            );
-            
-            if (isDuplicate) {
-              return prevTranscripts;
-            }
-            
-            return [...prevTranscripts, transcriptData];
-          });
-        });
-      })
-      .catch(err => {
-        console.error('Error accessing media devices:', err);
-        alert(`Error accessing media devices: ${err.message}`);
-      });
+      }
+    });
     
-    // Cleanup function
-    return () => {
-      cleanupResources();
-    };
-  }, [roomId, username]);
+    // Handle new user joining
+    socketRef.current.on('user-joined', (userId, username) => {
+      console.log(`User ${username} (${userId}) joined the room`);
+      
+      // Check if we already have this peer
+      if (peersRef.current.some(p => p.peerID === userId)) {
+        console.log(`Already connected to ${username} (${userId}), skipping duplicate connection`);
+        return;
+      }
+      
+      // Create a peer connection to the new user
+      const peer = createPeer(userId, userIdRef.current, userStream.current, username);
+      
+      // Store peer with metadata
+      const peerObj = {
+        peerID: userId,
+        peer,
+        username
+      };
+      
+      peersRef.current.push(peerObj);
+      
+      // Update the state to trigger re-render
+      setPeers(prevPeers => {
+        // Check if this peer is already in the array
+        if (prevPeers.some(p => p.peerID === userId)) {
+          return prevPeers;
+        }
+        return [...prevPeers, peerObj];
+      });
+    });
+    
+    // Handle incoming calls
+    socketRef.current.on('callIncoming', ({ signal, from, name }) => {
+      console.log(`Incoming call from ${name} (${from})`);
+      
+      // Check if we already have this peer
+      const existingPeer = peersRef.current.find(p => p.peerID === from);
+      if (existingPeer) {
+        console.log(`Already connected to ${name} (${from}), updating signal`);
+        existingPeer.peer.signal(signal);
+        return;
+      }
+      
+      // Create a new peer connection as the receiver
+      const peer = addPeer(signal, from, userStream.current, username);
+      
+      // Store peer with metadata
+      const peerObj = {
+        peerID: from,
+        peer,
+        username: name
+      };
+      
+      peersRef.current.push(peerObj);
+      
+      // Update the state to trigger re-render
+      setPeers(prevPeers => {
+        // Check if this peer is already in the array
+        if (prevPeers.some(p => p.peerID === from)) {
+          return prevPeers;
+        }
+        return [...prevPeers, peerObj];
+      });
+    });
+    
+    // Handle accepted calls
+    socketRef.current.on('callAccepted', ({ signal, from, name }) => {
+      console.log(`Call accepted by ${name} (${from})`);
+      
+      const item = peersRef.current.find(p => p.peerID === from);
+      if (item) {
+        item.peer.signal(signal);
+      }
+    });
+    
+    // Get all users currently in the room
+    socketRef.current.on('all-users', users => {
+      console.log('All users in room:', users);
+      
+      // Create peer connections to all existing users
+      users.forEach(user => {
+        // Check if we already have this peer
+        if (peersRef.current.some(p => p.peerID === user.id)) {
+          console.log(`Already connected to ${user.username} (${user.id}), skipping`);
+          return;
+        }
+        
+        const peer = createPeer(user.id, userIdRef.current, userStream.current, username);
+        
+        // Store peer with metadata
+        const peerObj = {
+          peerID: user.id,
+          peer,
+          username: user.username
+        };
+        
+        peersRef.current.push(peerObj);
+        
+        // Update the state to trigger re-render
+        setPeers(prevPeers => {
+          // Check if this peer is already in the array
+          if (prevPeers.some(p => p.peerID === user.id)) {
+            return prevPeers;
+          }
+          return [...prevPeers, peerObj];
+        });
+      });
+    });
+    
+    // Handle user leaving
+    socketRef.current.on('user-left', userId => {
+      console.log(`User ${userId} left the room`);
+      
+      // Find and remove the peer connection
+      const peerObj = peersRef.current.find(p => p.peerID === userId);
+      if (peerObj) {
+        peerObj.peer.destroy();
+      }
+      
+      // Remove from peers array
+      const peers = peersRef.current.filter(p => p.peerID !== userId);
+      peersRef.current = peers;
+      setPeers(peers);
+    });
+    
+    // Handle chat messages
+    socketRef.current.on('receive-message', message => {
+      console.log('Received message:', message);
+      
+      // Generate a unique ID for the message if it doesn't have one
+      if (!message.id) {
+        message.id = `${message.userId}-${Date.now()}`;
+      }
+      
+      setMessages(prevMessages => {
+        // Check if this message is already in the array (prevent duplicates)
+        const isDuplicate = prevMessages.some(m => 
+          m.id === message.id || 
+          (m.userId === message.userId && 
+           m.timestamp === message.timestamp && 
+           m.message === message.message)
+        );
+        
+        if (isDuplicate) {
+          console.log('Duplicate message detected, not adding to state');
+          return prevMessages;
+        }
+        
+        const newMessages = [...prevMessages, message];
+        
+        // Scroll to bottom of chat
+        setTimeout(() => {
+          if (chatEndRef.current) {
+            chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+          }
+        }, 100);
+        
+        return newMessages;
+      });
+    });
+    
+    // Handle transcripts
+    socketRef.current.on('receive-transcript', transcriptData => {
+      console.log('Received transcript:', transcriptData);
+      
+      // Generate a unique ID for the transcript if it doesn't have one
+      if (!transcriptData.id) {
+        transcriptData.id = `${transcriptData.userId}-${Date.now()}`;
+      }
+      
+      setTranscripts(prevTranscripts => {
+        // Check if this transcript is already in the array (prevent duplicates)
+        const isDuplicate = prevTranscripts.some(t => 
+          t.id === transcriptData.id || 
+          (t.userId === transcriptData.userId && 
+           t.timestamp === transcriptData.timestamp && 
+           t.transcript === transcriptData.transcript)
+        );
+        
+        if (isDuplicate) {
+          return prevTranscripts;
+        }
+        
+        return [...prevTranscripts, transcriptData];
+      });
+    });
+  };
   
   // Auto-scroll chat when new messages arrive
   useEffect(() => {
