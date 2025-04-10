@@ -49,11 +49,21 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     clearCachedSessionData();
     
     // Initialize socket connection
-    socketRef.current = io(config.SOCKET_URL);
+    socketRef.current = io(config.SOCKET_URL, {
+      query: { roomId, username },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000
+    });
+    
+    console.log('Initializing socket connection to:', config.SOCKET_URL);
     
     // Get user media
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
+        console.log('Got local media stream');
+        
         // Set local stream
         userStream.current = stream;
         
@@ -66,7 +76,12 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
         socketRef.current.on('connect', () => {
           console.log('Socket connected with ID:', socketRef.current.id);
           userIdRef.current = socketRef.current.id;
-          socketRef.current.emit('join-room', roomId, socketRef.current.id, username);
+          
+          // Join room with a slight delay to ensure socket is fully established
+          setTimeout(() => {
+            console.log('Emitting join-room event for room:', roomId);
+            socketRef.current.emit('join-room', roomId, socketRef.current.id, username);
+          }, 500);
         });
         
         // Handle when a new user connects
@@ -89,7 +104,10 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
           console.log('Call accepted by:', from);
           const peerObj = peersRef.current.find(p => p.peerID === from);
           if (peerObj) {
+            console.log('Found peer object, signaling...');
             peerObj.peer.signal(signal);
+          } else {
+            console.error('Could not find peer object for user:', from);
           }
         });
         
@@ -150,6 +168,19 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
   const connectToNewUser = (userId, stream) => {
     console.log('Connecting to new user:', userId);
     
+    // Don't connect to yourself
+    if (userId === socketRef.current.id) {
+      console.log('Not connecting to self');
+      return;
+    }
+    
+    // Check if we're already connected to this user
+    const existingPeer = peersRef.current.find(p => p.peerID === userId);
+    if (existingPeer) {
+      console.log('Already connected to user:', userId);
+      return;
+    }
+    
     // Create a new peer as the initiator
     const peer = new Peer({
       initiator: true,
@@ -162,7 +193,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     
     // When peer generates signal, send it to the user
     peer.on('signal', signal => {
-      console.log('Generated signal for new user');
+      console.log('Generated signal for new user:', userId);
       socketRef.current.emit('send-call', {
         to: userId,
         from: socketRef.current.id,
@@ -172,12 +203,17 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     
     // When we get a stream from the peer, create a video element
     peer.on('stream', remoteStream => {
-      console.log('Received stream from new user');
+      console.log('Received stream from new user:', userId);
     });
     
     // Handle peer errors
     peer.on('error', err => {
       console.error('Peer connection error:', err);
+    });
+    
+    // Handle peer connection
+    peer.on('connect', () => {
+      console.log('Peer connection established with:', userId);
     });
     
     // Store the peer
@@ -194,6 +230,19 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
   const answerCall = (from, incomingSignal, stream) => {
     console.log('Answering call from:', from);
     
+    // Don't answer calls from yourself
+    if (from === socketRef.current.id) {
+      console.log('Not answering call from self');
+      return;
+    }
+    
+    // Check if we're already connected to this user
+    const existingPeer = peersRef.current.find(p => p.peerID === from);
+    if (existingPeer) {
+      console.log('Already connected to user:', from);
+      return;
+    }
+    
     // Create a new peer as the receiver
     const peer = new Peer({
       initiator: false,
@@ -206,7 +255,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     
     // When peer generates signal, send it back to the caller
     peer.on('signal', signal => {
-      console.log('Generated answer signal');
+      console.log('Generated answer signal for:', from);
       socketRef.current.emit('accept-call', {
         to: from,
         signal
@@ -215,12 +264,17 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     
     // When we get a stream from the peer, create a video element
     peer.on('stream', remoteStream => {
-      console.log('Received stream from caller');
+      console.log('Received stream from caller:', from);
     });
     
     // Handle peer errors
     peer.on('error', err => {
       console.error('Peer connection error:', err);
+    });
+    
+    // Handle peer connection
+    peer.on('connect', () => {
+      console.log('Peer connection established with:', from);
     });
     
     // Signal the peer with the incoming signal

@@ -179,11 +179,11 @@ const rooms = {};
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
-  console.log(`User connected: ${socket.id}`);
+  console.log(`User connected: ${socket.id} with headers:`, socket.handshake.headers['user-agent']);
   
   // Join room when user explicitly sends join-room event
   socket.on('join-room', (roomId, userId, username) => {
-    console.log(`User ${username} (${userId}) joining room: ${roomId}`);
+    console.log(`User ${username} (${userId}) joining room: ${roomId} from device: ${socket.handshake.headers['user-agent'].substring(0, 50)}...`);
     
     // Join the socket.io room
     socket.join(roomId);
@@ -191,30 +191,39 @@ io.on('connection', (socket) => {
     // Store user data in the room
     if (!rooms[roomId]) {
       rooms[roomId] = { users: [] };
+      console.log(`Created new room: ${roomId}`);
     }
     
     // Add user to room if not already in
     const existingUser = rooms[roomId].users.find(user => user.id === userId);
     if (!existingUser) {
       rooms[roomId].users.push({ id: userId, username });
+      console.log(`Added user ${username} (${userId}) to room ${roomId}`);
+    } else {
+      console.log(`User ${username} (${userId}) already in room ${roomId}`);
     }
     
     // Broadcast to all users in the room except the sender
     socket.to(roomId).emit('user-connected', userId);
+    console.log(`Emitted user-connected event for ${userId} to room ${roomId}`);
     
-    console.log(`Room ${roomId} now has ${rooms[roomId].users.length} users`);
+    // Log all users in the room
+    console.log(`Room ${roomId} now has ${rooms[roomId].users.length} users:`, 
+      rooms[roomId].users.map(u => `${u.username} (${u.id})`).join(', '));
   });
   
   // Handle call signaling
   socket.on('send-call', ({ to, from, signal }) => {
     console.log(`Call from ${from} to ${to}`);
     io.to(to).emit('receive-call', { signal, from });
+    console.log(`Emitted receive-call event to ${to} from ${from}`);
   });
   
   // Handle call answer
   socket.on('accept-call', ({ to, signal }) => {
     console.log(`Call accepted by ${socket.id} to ${to}`);
     io.to(to).emit('call-accepted', { signal, from: socket.id });
+    console.log(`Emitted call-accepted event to ${to} from ${socket.id}`);
   });
   
   // Handle chat messages
