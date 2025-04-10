@@ -497,8 +497,8 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
   
   // Function to copy meeting link to clipboard
   const copyMeetingLink = () => {
-    // Use hash fragment instead of query parameter to avoid Vercel authentication issues
-    const meetingLink = `${window.location.origin}/#join=${roomId}`;
+    // Use path-based URL format to avoid Vercel authentication issues
+    const meetingLink = `${window.location.origin}/m/${roomId}`;
     navigator.clipboard.writeText(meetingLink)
       .then(() => {
         alert('Meeting link copied to clipboard!');
@@ -511,8 +511,8 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
   
   // Function to share meeting via email
   const shareMeetingViaEmail = () => {
-    // Use hash fragment instead of query parameter to avoid Vercel authentication issues
-    const meetingLink = `${window.location.origin}/#join=${roomId}`;
+    // Use path-based URL format to avoid Vercel authentication issues
+    const meetingLink = `${window.location.origin}/m/${roomId}`;
     const subject = `Join my Vanilla video meeting`;
     const body = `Join my meeting using this link: ${meetingLink}`;
     window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -568,7 +568,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
         </div>
       </div>
       
-      <div className="video-grid">
+      <div className={`video-grid ${peers.length === 0 ? 'single-participant' : ''}`}>
         <div className="video-item">
           <video ref={userVideo} autoPlay muted playsInline />
           <div className="name-tag">{username} (You)</div>

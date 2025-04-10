@@ -19,12 +19,21 @@ function App() {
     localStorage.removeItem('vanilla_username');
     localStorage.removeItem('vanilla_meetingId');
     
-    // Handle direct meeting links - check both URL formats
-    const checkForMeetingId = () => {
-      // First check query parameters
+    // Function to handle direct meeting links
+    const processDirectLink = () => {
+      // Check URL path for meeting ID (e.g., /m/abcdef)
+      const pathMatch = window.location.pathname.match(/\/m\/([a-zA-Z0-9]+)/);
+      if (pathMatch && pathMatch[1]) {
+        console.log(`Found meeting ID in path: ${pathMatch[1]}`);
+        setMeetingId(pathMatch[1]);
+        setAction('join');
+        setShowNameInput(true);
+        return true;
+      }
+      
+      // Check query parameters
       const params = new URLSearchParams(window.location.search);
       const joinMeetingId = params.get('join');
-      
       if (joinMeetingId) {
         console.log(`Found meeting ID in query params: ${joinMeetingId}`);
         setMeetingId(joinMeetingId);
@@ -36,10 +45,9 @@ function App() {
         return true;
       }
       
-      // Then check hash fragment (for compatibility with some sharing methods)
+      // Check hash fragment
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
       const hashJoinId = hashParams.get('join');
-      
       if (hashJoinId) {
         console.log(`Found meeting ID in hash fragment: ${hashJoinId}`);
         setMeetingId(hashJoinId);
@@ -54,8 +62,8 @@ function App() {
       return false;
     };
     
-    // Try to find meeting ID in URL
-    checkForMeetingId();
+    // Process any direct meeting links
+    processDirectLink();
   }, []);
 
   const handleCreateMeeting = () => {

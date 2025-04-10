@@ -225,6 +225,13 @@ body {
   padding: 1rem;
   flex: 1;
   overflow-y: auto;
+  max-height: calc(100vh - 180px); /* Limit maximum height */
+}
+
+.video-grid.single-participant {
+  grid-template-columns: 1fr;
+  max-width: 800px;
+  margin: 0 auto;
 }
 
 .video-item {
@@ -233,6 +240,7 @@ body {
   border-radius: 8px;
   overflow: hidden;
   aspect-ratio: 16/9;
+  max-height: calc(100vh - 220px); /* Prevent too tall videos */
 }
 
 .video-item video {

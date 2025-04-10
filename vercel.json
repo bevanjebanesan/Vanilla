@@ -1,21 +1,22 @@
 {
-  "buildCommand": "cd client && npm install && NODE_OPTIONS=--openssl-legacy-provider npm run build",
-  "outputDirectory": "client/build",
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Credentials", "value": "true" },
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET,OPTIONS,PATCH,DELETE,POST,PUT" },
-        { "key": "Access-Control-Allow-Headers", "value": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version" }
-      ]
-    }
+  "version": 2,
+  "public": true,
+  "github": {
+    "enabled": false
+  },
+  "routes": [
+    { "src": "/m/(.*)", "dest": "/index.html" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ],
   "env": {
-    "NODE_OPTIONS": "--openssl-legacy-provider"
+    "REACT_APP_NODE_ENV": "production",
+    "REACT_APP_SERVER_URL": "https://vanilla-2na6.onrender.com",
+    "REACT_APP_SOCKET_URL": "https://vanilla-2na6.onrender.com"
+  },
+  "build": {
+    "env": {
+      "NODE_OPTIONS": "--openssl-legacy-provider"
+    }
   }
 }
