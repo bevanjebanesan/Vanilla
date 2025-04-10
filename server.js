@@ -4,6 +4,7 @@ const socketIo = require('socket.io');
 const path = require('path');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const fs = require('fs');
 require('dotenv').config();
 
 // MongoDB connection
@@ -141,31 +142,28 @@ app.get('/api/meetings/:meetingId', async (req, res) => {
   }
 });
 
-// Serve static files from the React app in production
-if (process.env.NODE_ENV === 'production') {
-  try {
-    const path = require('path');
-    const fs = require('fs');
-    const clientBuildPath = path.join(__dirname, 'client', 'build');
+// Serve static files from the React app
+try {
+  const clientBuildPath = path.join(__dirname, 'client', 'build');
+  
+  // Check if the client/build directory exists
+  if (fs.existsSync(clientBuildPath)) {
+    app.use(express.static(clientBuildPath));
     
-    // Check if the client/build directory exists
-    if (fs.existsSync(clientBuildPath)) {
-      app.use(express.static(clientBuildPath));
-      
-      // Handle React routing, return all requests to React app
-      app.get('*', (req, res) => {
-        if (!req.path.startsWith('/api') && !req.path.startsWith('/socket.io')) {
-          res.sendFile(path.join(clientBuildPath, 'index.html'));
-        }
-      });
-      
-      console.log('Serving static files from client/build');
-    } else {
-      console.log('Client build directory not found. Not serving static files.');
-    }
-  } catch (error) {
-    console.error('Error setting up static file serving:', error);
+    // Handle React routing, return all requests to React app
+    app.get('*', (req, res) => {
+      if (!req.path.startsWith('/api') && !req.path.startsWith('/socket.io')) {
+        res.sendFile(path.join(clientBuildPath, 'index.html'));
+      }
+    });
+    
+    console.log('Serving static files from client/build');
+  } else {
+    console.error('Client build directory not found at:', clientBuildPath);
+    console.error('Please run "npm run build" in the client directory');
   }
+} catch (error) {
+  console.error('Error setting up static file serving:', error);
 }
 
 const server = http.createServer(app);
