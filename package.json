@@ -1,0 +1,35 @@
+{
+  "name": "vanilla",
+  "version": "1.0.0",
+  "description": "A Zoom clone with video conferencing, real-time chat, and speech-to-text conversion.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "client": "cd client && NODE_OPTIONS=--openssl-legacy-provider npm start",
+    "server": "nodemon server.js",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "build": "cd client && NODE_OPTIONS=--openssl-legacy-provider npm run build",
+    "install-client": "cd client && npm install",
+    "heroku-postbuild": "npm run install-client && npm run build",
+    "render-postbuild": "npm run install-client && npm run build",
+    "deploy-prepare": "git add . && git commit -m \"Prepare for deployment\" && git push origin main"
+  },
+  "dependencies": {
+    "bcrypt": "^5.0.1",
+    "cors": "^2.8.5",
+    "dotenv": "^10.0.0",
+    "express": "^4.17.1",
+    "jsonwebtoken": "^8.5.1",
+    "mongodb": "^4.1.0",
+    "mongoose": "^8.13.2",
+    "socket.io": "^4.0.0",
+    "uuid": "^8.3.2"
+  },
+  "devDependencies": {
+    "concurrently": "^6.2.0",
+    "nodemon": "^2.0.7"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

@@ -1,0 +1,482 @@
+/* Global styles */
+:root {
+  --primary-color: #e41e3f;
+  --primary-dark: #c41a35;
+  --primary-light: #ff5252;
+  --secondary-color: #333333;
+  --text-color: #333333;
+  --text-light: #ffffff;
+  --background-color: #f5f5f5;
+  --border-color: #e0e0e0;
+  --success-color: #4caf50;
+  --warning-color: #ff9800;
+  --danger-color: #f44336;
+  --shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: var(--background-color);
+  color: var(--text-color);
+  line-height: 1.6;
+}
+
+.App {
+  text-align: center;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.app-header {
+  background-color: var(--primary-color);
+  color: white;
+  padding: 1rem;
+  box-shadow: var(--shadow);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.8rem;
+  font-weight: 600;
+}
+
+.app-logo {
+  height: 40px;
+  margin-right: 10px;
+}
+
+/* Home container */
+.home-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  max-width: 600px;
+  margin: 4rem auto;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.home-container h2 {
+  margin-bottom: 2rem;
+  color: var(--primary-color);
+}
+
+.home-container p {
+  margin-bottom: 2rem;
+  color: var(--secondary-color);
+  text-align: center;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+  width: 100%;
+  margin-top: 1rem;
+}
+
+.action-button {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 12px 24px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.3s, transform 0.2s;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.action-button:hover {
+  background-color: var(--primary-dark);
+  transform: translateY(-2px);
+}
+
+.action-button:active {
+  transform: translateY(0);
+}
+
+.action-button svg {
+  font-size: 1.2rem;
+}
+
+/* Name input container */
+.name-input-container {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 2rem;
+  max-width: 500px;
+  margin: 4rem auto;
+  width: 90%;
+}
+
+.name-input-container h2 {
+  margin-bottom: 1.5rem;
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.name-input-container form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.name-input-container input {
+  padding: 12px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 1rem;
+  transition: border-color 0.3s;
+}
+
+.name-input-container input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.name-input-container button {
+  padding: 12px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.name-input-container button[type="submit"] {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.name-input-container button[type="submit"]:hover {
+  background-color: var(--primary-dark);
+}
+
+.name-input-container button[type="button"] {
+  background-color: #f0f0f0;
+  color: var(--text-color);
+}
+
+.name-input-container button[type="button"]:hover {
+  background-color: #e0e0e0;
+}
+
+/* Video Room */
+.video-room {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #1a1a1a;
+  color: white;
+}
+
+.room-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  background-color: #2a2a2a;
+  border-bottom: 1px solid #3a3a3a;
+}
+
+.room-header h2 {
+  font-size: 1.2rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+.meeting-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* Video Grid */
+.video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.video-item {
+  position: relative;
+  background-color: #2a2a2a;
+  border-radius: 8px;
+  overflow: hidden;
+  aspect-ratio: 16/9;
+}
+
+.video-item video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background-color: #3a3a3a;
+}
+
+.name-tag {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  background-color: rgba(0, 0, 0, 0.6);
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+/* Video Controls */
+.video-controls {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1rem;
+  background-color: #2a2a2a;
+}
+
+.control-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background-color: #3a3a3a;
+  border: none;
+  cursor: pointer;
+  color: white;
+  transition: background-color 0.2s;
+}
+
+.control-button:hover {
+  background-color: #4a4a4a;
+}
+
+.control-button.active {
+  background-color: var(--primary-color);
+}
+
+.control-button.danger {
+  background-color: var(--danger-color);
+}
+
+.control-button.danger:hover {
+  background-color: #c41a35;
+}
+
+/* Communication Panel */
+.communication-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  padding: 1rem;
+  background-color: #2a2a2a;
+  max-height: 300px;
+  overflow: hidden;
+}
+
+.chat-container, .transcript-container {
+  display: flex;
+  flex-direction: column;
+  background-color: #3a3a3a;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.chat-container h3, .transcript-container h3 {
+  margin: 0;
+  padding: 0.8rem;
+  background-color: #4a4a4a;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.chat-messages, .transcript-text {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  max-height: 200px;
+}
+
+.message {
+  background-color: #4a4a4a;
+  border-radius: 8px;
+  padding: 0.8rem;
+  max-width: 90%;
+  align-self: flex-start;
+}
+
+.message.own-message {
+  background-color: var(--primary-color);
+  align-self: flex-end;
+}
+
+.message-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.message-content {
+  word-break: break-word;
+}
+
+.transcript-item {
+  background-color: #4a4a4a;
+  border-radius: 8px;
+  padding: 0.8rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.chat-input {
+  display: flex;
+  padding: 0.8rem;
+  gap: 0.5rem;
+  background-color: #4a4a4a;
+}
+
+.chat-input input {
+  flex: 1;
+  padding: 0.5rem;
+  border: none;
+  border-radius: 4px;
+  background-color: #5a5a5a;
+  color: white;
+}
+
+.chat-input button {
+  padding: 0.5rem 1rem;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.chat-input button:hover {
+  background-color: var(--primary-dark);
+}
+
+/* Dropdown */
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: #3a3a3a;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.dropdown-button.danger {
+  background-color: var(--danger-color);
+}
+
+.dropdown-button:hover {
+  background-color: #4a4a4a;
+}
+
+.dropdown-button.danger:hover {
+  background-color: #c41a35;
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  right: 0;
+  background-color: #3a3a3a;
+  min-width: 200px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+  z-index: 1;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.dropdown:hover .dropdown-content {
+  display: block;
+}
+
+.dropdown-content button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: white;
+  padding: 0.8rem 1rem;
+  text-decoration: none;
+  text-align: left;
+  width: 100%;
+  border: none;
+  background-color: transparent;
+  cursor: pointer;
+}
+
+.dropdown-content button:hover {
+  background-color: #4a4a4a;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .communication-panel {
+    grid-template-columns: 1fr;
+  }
+  
+  .video-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .action-buttons {
+    flex-direction: column;
+  }
+  
+  .room-header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+  
+  .meeting-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
