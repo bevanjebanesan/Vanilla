@@ -40,8 +40,17 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     // Clear any cached data from previous sessions
     clearCachedSessionData();
     
+    // Cleanup any existing socket connection
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+    }
+    
     // Connect to the server
-    socketRef.current = io.connect(config.SOCKET_URL);
+    socketRef.current = io.connect(config.SOCKET_URL, {
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 5
+    });
     
     // Generate a unique user ID
     userIdRef.current = generateUserId();
@@ -63,6 +72,12 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
         socketRef.current.on('user-joined', (userId, username) => {
           console.log(`User ${username} (${userId}) joined the room`);
           
+          // Check if we already have this peer
+          if (peersRef.current.find(p => p.peerID === userId)) {
+            console.log(`Already connected to ${username} (${userId}), ignoring duplicate`);
+            return;
+          }
+          
           // Create a peer connection to the new user
           const peer = createPeer(userId, userIdRef.current, stream, username);
           
@@ -72,16 +87,28 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
             username
           });
           
-          setPeers(prevPeers => [...prevPeers, {
-            peerID: userId,
-            peer,
-            username
-          }]);
+          setPeers(prevPeers => {
+            // Check if this peer is already in the array
+            if (prevPeers.some(p => p.peerID === userId)) {
+              return prevPeers;
+            }
+            return [...prevPeers, {
+              peerID: userId,
+              peer,
+              username
+            }];
+          });
         });
         
         // Handle incoming calls
         socketRef.current.on('callIncoming', ({ signal, from, name }) => {
           console.log(`Incoming call from ${name} (${from})`);
+          
+          // Check if we already have this peer
+          if (peersRef.current.find(p => p.peerID === from)) {
+            console.log(`Already connected to ${name} (${from}), ignoring duplicate call`);
+            return;
+          }
           
           const peer = addPeer(signal, from, stream, username);
           
@@ -91,11 +118,17 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
             username: name
           });
           
-          setPeers(prevPeers => [...prevPeers, {
-            peerID: from,
-            peer,
-            username: name
-          }]);
+          setPeers(prevPeers => {
+            // Check if this peer is already in the array
+            if (prevPeers.some(p => p.peerID === from)) {
+              return prevPeers;
+            }
+            return [...prevPeers, {
+              peerID: from,
+              peer,
+              username: name
+            }];
+          });
         });
         
         // Handle accepted calls
@@ -114,6 +147,12 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
           
           // Create peer connections to all existing users
           users.forEach(user => {
+            // Check if we already have this peer
+            if (peersRef.current.find(p => p.peerID === user.id)) {
+              console.log(`Already connected to ${user.username} (${user.id}), skipping`);
+              return;
+            }
+            
             const peer = createPeer(user.id, userIdRef.current, stream, username);
             
             peersRef.current.push({
@@ -122,11 +161,17 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
               username: user.username
             });
             
-            setPeers(prevPeers => [...prevPeers, {
-              peerID: user.id,
-              peer,
-              username: user.username
-            }]);
+            setPeers(prevPeers => {
+              // Check if this peer is already in the array
+              if (prevPeers.some(p => p.peerID === user.id)) {
+                return prevPeers;
+              }
+              return [...prevPeers, {
+                peerID: user.id,
+                peer,
+                username: user.username
+              }];
+            });
           });
         });
         
@@ -149,13 +194,35 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
         // Handle chat messages
         socketRef.current.on('receive-message', message => {
           console.log('Received message:', message);
-          setMessages(prevMessages => [...prevMessages, message]);
+          setMessages(prevMessages => {
+            // Check if this message is already in the array (prevent duplicates)
+            if (prevMessages.some(m => 
+              m.id === message.id || 
+              (m.username === message.username && 
+               m.message === message.message && 
+               Math.abs(new Date(m.timestamp) - new Date(message.timestamp)) < 1000)
+            )) {
+              return prevMessages;
+            }
+            return [...prevMessages, message];
+          });
         });
         
         // Handle transcripts
         socketRef.current.on('receive-transcript', transcript => {
           console.log('Received transcript:', transcript);
-          setTranscripts(prevTranscripts => [...prevTranscripts, transcript]);
+          setTranscripts(prevTranscripts => {
+            // Check if this transcript is already in the array
+            if (prevTranscripts.some(t => 
+              t.id === transcript.id || 
+              (t.username === transcript.username && 
+               t.text === transcript.text && 
+               Math.abs(new Date(t.timestamp) - new Date(transcript.timestamp)) < 1000)
+            )) {
+              return prevTranscripts;
+            }
+            return [...prevTranscripts, transcript];
+          });
         });
       })
       .catch(err => {
@@ -197,7 +264,13 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
   
   // Function to cleanup all resources
   const cleanupResources = () => {
-    console.log('Cleaning up all resources');
+    console.log('Cleaning up resources...');
+    
+    // Stop speech recognition if active
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
     
     // Stop all media tracks
     if (userStream.current) {
@@ -207,12 +280,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
       userStream.current = null;
     }
     
-    // Clear video element source
-    if (userVideo.current) {
-      userVideo.current.srcObject = null;
-    }
-    
-    // Close all peer connections
+    // Destroy all peer connections
     peersRef.current.forEach(peer => {
       if (peer.peer) {
         peer.peer.destroy();
@@ -220,20 +288,31 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     });
     peersRef.current = [];
     
-    // Stop speech recognition if active
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
-    }
-    
-    // Disconnect socket
+    // Disconnect from the socket
     if (socketRef.current) {
+      // Remove all listeners to prevent memory leaks and duplicate events
+      socketRef.current.off('user-joined');
+      socketRef.current.off('callIncoming');
+      socketRef.current.off('callAccepted');
+      socketRef.current.off('all-users');
+      socketRef.current.off('user-left');
+      socketRef.current.off('receive-message');
+      socketRef.current.off('receive-transcript');
+      
+      // Leave the room
+      if (roomId) {
+        socketRef.current.emit('leave-room', roomId, userIdRef.current);
+      }
+      
+      // Disconnect the socket
       socketRef.current.disconnect();
       socketRef.current = null;
     }
     
-    // Clear cached session data
-    clearCachedSessionData();
+    // Clear state
+    setPeers([]);
+    setMessages([]);
+    setTranscripts([]);
   };
   
   // Function to handle leaving the meeting
