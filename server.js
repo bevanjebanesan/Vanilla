@@ -181,14 +181,6 @@ const rooms = {};
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
   
-  // Get roomId and username from query parameters
-  const { roomId, username } = socket.handshake.query;
-  
-  if (!roomId) {
-    console.error('No roomId provided in socket connection');
-    return;
-  }
-  
   // Join room when user explicitly sends join-room event
   socket.on('join-room', (roomId, userId, username) => {
     console.log(`User ${username} (${userId}) joining room: ${roomId}`);
@@ -207,28 +199,22 @@ io.on('connection', (socket) => {
       rooms[roomId].users.push({ id: userId, username });
     }
     
-    // Get all other users in the room
-    const otherUsers = rooms[roomId].users.filter(user => user.id !== userId);
-    
-    // Send all existing users to the new user
-    socket.emit('all-users', otherUsers);
-    
-    // Notify all users in the room about the new user
-    socket.to(roomId).emit('user-joined', { userId, username });
+    // Broadcast to all users in the room except the sender
+    socket.to(roomId).emit('user-connected', userId);
     
     console.log(`Room ${roomId} now has ${rooms[roomId].users.length} users`);
   });
   
   // Handle call signaling
-  socket.on('callUser', ({ userToCall, signalData, from, name }) => {
-    console.log(`Call from ${name} (${from}) to ${userToCall}`);
-    io.to(userToCall).emit('callIncoming', { signal: signalData, from, name });
+  socket.on('send-call', ({ to, from, signal }) => {
+    console.log(`Call from ${from} to ${to}`);
+    io.to(to).emit('receive-call', { signal, from });
   });
   
   // Handle call answer
-  socket.on('answerCall', ({ signal, to, name }) => {
-    console.log(`Call answered by ${name} to ${to}`);
-    io.to(to).emit('callAccepted', { signal, from: socket.id, name });
+  socket.on('accept-call', ({ to, signal }) => {
+    console.log(`Call accepted by ${socket.id} to ${to}`);
+    io.to(to).emit('call-accepted', { signal, from: socket.id });
   });
   
   // Handle chat messages
@@ -254,7 +240,7 @@ io.on('connection', (socket) => {
       room.users = room.users.filter(user => user.id !== socket.id);
       
       // Notify other users in the room
-      socket.to(roomId).emit('user-left', socket.id);
+      socket.to(roomId).emit('user-disconnected', socket.id);
       
       // Clean up empty rooms
       if (room.users.length === 0) {
@@ -275,7 +261,7 @@ io.on('connection', (socket) => {
       rooms[roomId].users = rooms[roomId].users.filter(user => user.id !== socket.id);
       
       // Notify other users in the room
-      socket.to(roomId).emit('user-left', socket.id);
+      socket.to(roomId).emit('user-disconnected', socket.id);
       
       // Leave the socket.io room
       socket.leave(roomId);
