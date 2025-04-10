@@ -346,6 +346,36 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* Video error display */
+.video-error {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  z-index: 1;
+}
+
+.video-error div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.video-error svg {
+  color: #d32f2f;
+  margin-bottom: 10px;
+  width: 40px;
+  height: 40px;
+}
+
 /* Video Controls */
 .video-controls {
   display: flex;

@@ -376,10 +376,19 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     
     peer.on('stream', stream => {
       console.log(`Received stream from peer ${userToCall}`, stream);
+      // No need to handle stream here as it's handled in the Video component
+    });
+    
+    peer.on('connect', () => {
+      console.log(`Connected to peer ${userToCall}`);
+    });
+    
+    peer.on('close', () => {
+      console.log(`Connection to peer ${userToCall} closed`);
     });
     
     peer.on('error', err => {
-      console.error('Peer connection error:', err);
+      console.error(`Peer connection error with ${userToCall}:`, err);
     });
     
     return peer;
@@ -409,10 +418,19 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     
     peer.on('stream', stream => {
       console.log(`Received stream from peer ${callerId}`, stream);
+      // No need to handle stream here as it's handled in the Video component
+    });
+    
+    peer.on('connect', () => {
+      console.log(`Connected to peer ${callerId}`);
+    });
+    
+    peer.on('close', () => {
+      console.log(`Connection to peer ${callerId} closed`);
     });
     
     peer.on('error', err => {
-      console.error('Peer connection error:', err);
+      console.error(`Peer connection error with ${callerId}:`, err);
     });
     
     // Signal the peer with the incoming signal
@@ -778,12 +796,14 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
 function Video({ peer }) {
   const videoRef = useRef();
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
   
   useEffect(() => {
     console.log("Setting up video ref for peer");
     
     if (!peer) {
       console.error("No peer provided to Video component");
+      setError(true);
       return;
     }
     
@@ -791,12 +811,26 @@ function Video({ peer }) {
     const handleStream = stream => {
       console.log("Received stream in Video component", stream);
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setLoaded(true);
+        try {
+          videoRef.current.srcObject = stream;
+          setLoaded(true);
+          setError(false);
+        } catch (err) {
+          console.error("Error setting video srcObject:", err);
+          setError(true);
+        }
       }
     };
     
+    // Handle errors
+    const handleError = err => {
+      console.error("Peer error in Video component:", err);
+      setError(true);
+    };
+    
+    // Add event listeners
     peer.on('stream', handleStream);
+    peer.on('error', handleError);
     
     // Check if we already have a stream
     if (peer.streams && peer.streams.length > 0) {
@@ -807,9 +841,17 @@ function Video({ peer }) {
     return () => {
       // Cleanup
       peer.off('stream', handleStream);
+      peer.off('error', handleError);
+      
       if (videoRef.current && videoRef.current.srcObject) {
         const tracks = videoRef.current.srcObject.getTracks();
-        tracks.forEach(track => track.stop());
+        tracks.forEach(track => {
+          try {
+            track.stop();
+          } catch (err) {
+            console.error("Error stopping track:", err);
+          }
+        });
         videoRef.current.srcObject = null;
       }
     };
@@ -821,12 +863,31 @@ function Video({ peer }) {
         ref={videoRef} 
         autoPlay 
         playsInline 
-        onLoadedMetadata={() => console.log("Video loaded metadata")}
+        onLoadedMetadata={() => {
+          console.log("Video loaded metadata");
+          setLoaded(true);
+        }}
+        onError={(e) => {
+          console.error("Video element error:", e);
+          setError(true);
+        }}
       />
-      {!loaded && (
+      {!loaded && !error && (
         <div className="video-loading">
           <div className="loading-spinner"></div>
           <div>Connecting...</div>
+        </div>
+      )}
+      {error && (
+        <div className="video-error">
+          <div>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <div>Video connection error</div>
+          </div>
         </div>
       )}
     </>
