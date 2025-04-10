@@ -18,6 +18,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
   const peersRef = useRef([]);
   const userStream = useRef();
   const userIdRef = useRef('');
+  const chatEndRef = useRef(null);
   
   // Speech recognition setup
   const recognitionRef = useRef(null);
@@ -49,32 +50,39 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     socketRef.current = io.connect(config.SOCKET_URL, {
       transports: ['websocket'],
       reconnection: true,
-      reconnectionAttempts: 5
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000
     });
     
-    // Generate a unique user ID
-    userIdRef.current = generateUserId();
-    
-    // Get user's media stream
+    // Get user media
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
-        console.log("Got local media stream");
+        console.log('Got local media stream');
         userStream.current = stream;
-        userVideo.current.srcObject = stream;
+        
+        if (userVideo.current) {
+          userVideo.current.srcObject = stream;
+        }
         
         // Join the room
-        socketRef.current.emit('join-room', roomId, userIdRef.current, username);
+        socketRef.current.emit('join-room', roomId, null, username);
         
-        // Fetch meeting data after joining
-        fetchMeetingData();
+        // Get user ID from server
+        socketRef.current.on('your-id', id => {
+          console.log(`My ID is ${id}`);
+          userIdRef.current = id;
+          
+          // Fetch meeting data after getting user ID
+          fetchMeetingData();
+        });
         
-        // Set up event listeners for new users
+        // Handle new user joining
         socketRef.current.on('user-joined', (userId, username) => {
           console.log(`User ${username} (${userId}) joined the room`);
           
           // Check if we already have this peer
-          if (peersRef.current.find(p => p.peerID === userId)) {
-            console.log(`Already connected to ${username} (${userId}), ignoring duplicate`);
+          if (peersRef.current.some(p => p.peerID === userId)) {
+            console.log(`Already connected to ${username} (${userId}), skipping duplicate connection`);
             return;
           }
           
@@ -105,8 +113,10 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
           console.log(`Incoming call from ${name} (${from})`);
           
           // Check if we already have this peer
-          if (peersRef.current.find(p => p.peerID === from)) {
-            console.log(`Already connected to ${name} (${from}), ignoring duplicate call`);
+          const existingPeer = peersRef.current.find(p => p.peerID === from);
+          if (existingPeer) {
+            console.log(`Already connected to ${name} (${from}), updating signal`);
+            existingPeer.peer.signal(signal);
             return;
           }
           
@@ -148,7 +158,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
           // Create peer connections to all existing users
           users.forEach(user => {
             // Check if we already have this peer
-            if (peersRef.current.find(p => p.peerID === user.id)) {
+            if (peersRef.current.some(p => p.peerID === user.id)) {
               console.log(`Already connected to ${user.username} (${user.id}), skipping`);
               return;
             }
@@ -194,72 +204,87 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
         // Handle chat messages
         socketRef.current.on('receive-message', message => {
           console.log('Received message:', message);
+          
+          // Generate a unique ID for the message if it doesn't have one
+          if (!message.id) {
+            message.id = `${message.userId}-${Date.now()}`;
+          }
+          
           setMessages(prevMessages => {
             // Check if this message is already in the array (prevent duplicates)
-            if (prevMessages.some(m => 
+            const isDuplicate = prevMessages.some(m => 
               m.id === message.id || 
-              (m.username === message.username && 
-               m.message === message.message && 
-               Math.abs(new Date(m.timestamp) - new Date(message.timestamp)) < 1000)
-            )) {
+              (m.userId === message.userId && 
+               m.timestamp === message.timestamp && 
+               m.message === message.message)
+            );
+            
+            if (isDuplicate) {
+              console.log('Duplicate message detected, not adding to state');
               return prevMessages;
             }
-            return [...prevMessages, message];
+            
+            const newMessages = [...prevMessages, message];
+            
+            // Scroll to bottom of chat
+            setTimeout(() => {
+              if (chatEndRef.current) {
+                chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+              }
+            }, 100);
+            
+            return newMessages;
           });
         });
         
         // Handle transcripts
-        socketRef.current.on('receive-transcript', transcript => {
-          console.log('Received transcript:', transcript);
+        socketRef.current.on('receive-transcript', transcriptData => {
+          console.log('Received transcript:', transcriptData);
+          
+          // Generate a unique ID for the transcript if it doesn't have one
+          if (!transcriptData.id) {
+            transcriptData.id = `${transcriptData.userId}-${Date.now()}`;
+          }
+          
           setTranscripts(prevTranscripts => {
-            // Check if this transcript is already in the array
-            if (prevTranscripts.some(t => 
-              t.id === transcript.id || 
-              (t.username === transcript.username && 
-               t.text === transcript.text && 
-               Math.abs(new Date(t.timestamp) - new Date(transcript.timestamp)) < 1000)
-            )) {
+            // Check if this transcript is already in the array (prevent duplicates)
+            const isDuplicate = prevTranscripts.some(t => 
+              t.id === transcriptData.id || 
+              (t.userId === transcriptData.userId && 
+               t.timestamp === transcriptData.timestamp && 
+               t.transcript === transcriptData.transcript)
+            );
+            
+            if (isDuplicate) {
               return prevTranscripts;
             }
-            return [...prevTranscripts, transcript];
+            
+            return [...prevTranscripts, transcriptData];
           });
         });
       })
       .catch(err => {
         console.error('Error accessing media devices:', err);
-        alert('Could not access camera or microphone. Please check your permissions.');
+        alert(`Error accessing media devices: ${err.message}`);
       });
     
-    // Cleanup on component unmount
+    // Cleanup function
     return () => {
       cleanupResources();
     };
   }, [roomId, username]);
   
+  // Auto-scroll chat when new messages arrive
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
+  
   // Function to clear cached session data
   const clearCachedSessionData = () => {
-    // Clear any session storage
     sessionStorage.removeItem('vanilla_username');
     sessionStorage.removeItem('vanilla_meetingId');
-    sessionStorage.removeItem('vanilla_userId');
-    
-    // Clear any local storage
-    localStorage.removeItem('vanilla_username');
-    localStorage.removeItem('vanilla_meetingId');
-    localStorage.removeItem('vanilla_userId');
-    
-    // Clear any IndexedDB data related to WebRTC
-    if (window.indexedDB) {
-      try {
-        // Clear WebRTC-related databases
-        const databases = ['WebRTCIdentityStore', 'rtcStatsDatabase'];
-        databases.forEach(dbName => {
-          window.indexedDB.deleteDatabase(dbName);
-        });
-      } catch (error) {
-        console.error('Error clearing IndexedDB:', error);
-      }
-    }
   };
   
   // Function to cleanup all resources
@@ -437,25 +462,55 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
       
       recognition.continuous = true;
       recognition.interimResults = true;
+      recognition.lang = 'en-US';
+      
+      // Store interim results
+      let interimTranscript = '';
+      let finalTranscript = '';
       
       recognition.onresult = (event) => {
-        const transcript = Array.from(event.results)
-          .map(result => result[0])
-          .map(result => result.transcript)
-          .join('');
+        // Process results
+        interimTranscript = '';
+        finalTranscript = '';
         
-        if (event.results[0].isFinal) {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+        
+        // Only send final transcripts to avoid flooding
+        if (finalTranscript !== '') {
           // Send transcript to other users
           const transcriptData = {
-            transcript,
+            transcript: finalTranscript,
             userId: userIdRef.current,
             username,
             roomId,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            id: `${userIdRef.current}-${Date.now()}`
           };
           
           socketRef.current.emit('send-transcript', transcriptData);
-          setTranscripts(prevTranscripts => [...prevTranscripts, transcriptData]);
+          
+          // Add to local state with deduplication
+          setTranscripts(prevTranscripts => {
+            // Check if this transcript is already in the array (prevent duplicates)
+            const isDuplicate = prevTranscripts.some(t => 
+              t.transcript === finalTranscript && 
+              t.userId === userIdRef.current &&
+              Math.abs(new Date(t.timestamp) - new Date()) < 2000
+            );
+            
+            if (isDuplicate) {
+              return prevTranscripts;
+            }
+            
+            return [...prevTranscripts, transcriptData];
+          });
         }
       };
       
@@ -463,6 +518,19 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
         // Restart if still active
         if (isSpeechRecognitionActive) {
           recognition.start();
+        }
+      };
+      
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error', event.error);
+        if (event.error === 'no-speech') {
+          // This is a common error, just restart
+          if (isSpeechRecognitionActive && recognitionRef.current) {
+            recognition.start();
+          }
+        } else {
+          alert(`Speech recognition error: ${event.error}`);
+          setIsSpeechRecognitionActive(false);
         }
       };
       
@@ -475,7 +543,6 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
   // Function to send a chat message
   const sendMessage = (e) => {
     e.preventDefault();
-    
     if (messageInput.trim() === '') return;
     
     const messageData = {
@@ -483,16 +550,25 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
       userId: userIdRef.current,
       username,
       message: messageInput,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      id: `${userIdRef.current}-${Date.now()}`
     };
     
+    // Emit the message to the server
     socketRef.current.emit('send-message', messageData);
     
-    // Add message to local state
+    // Add to local state immediately for instant feedback
     setMessages(prevMessages => [...prevMessages, messageData]);
     
     // Clear input
     setMessageInput('');
+    
+    // Scroll to bottom
+    setTimeout(() => {
+      if (chatEndRef.current) {
+        chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 100);
   };
   
   // Function to copy meeting link to clipboard
@@ -569,15 +645,15 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
       </div>
       
       <div className={`video-grid ${peers.length === 0 ? 'single-participant' : ''}`}>
-        <div className="video-item">
+        <div className="video-container">
           <video ref={userVideo} autoPlay muted playsInline />
-          <div className="name-tag">{username} (You)</div>
+          <div className="video-username">{username} (You)</div>
         </div>
         
         {peers.map((peer) => (
-          <div className="video-item" key={peer.peerID}>
+          <div className="video-container" key={peer.peerID}>
             <Video peer={peer.peer} />
-            <div className="name-tag">{peer.username}</div>
+            <div className="video-username">{peer.username}</div>
           </div>
         ))}
       </div>
@@ -659,6 +735,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
                 <div className="message-content">{msg.message}</div>
               </div>
             ))}
+            <div ref={chatEndRef} />
           </div>
           <form onSubmit={sendMessage} className="chat-input">
             <input
@@ -689,6 +766,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
 // Helper component to display remote video
 function Video({ peer }) {
   const videoRef = useRef();
+  const [loaded, setLoaded] = useState(false);
   
   useEffect(() => {
     console.log("Setting up video ref for peer");
@@ -699,29 +777,49 @@ function Video({ peer }) {
     }
     
     // Handle when we get a stream from the peer
-    peer.on('stream', stream => {
+    const handleStream = stream => {
       console.log("Received stream in Video component", stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        setLoaded(true);
       }
-    });
+    };
+    
+    peer.on('stream', handleStream);
     
     // Check if we already have a stream
     if (peer.streams && peer.streams.length > 0) {
       console.log("Peer already has streams:", peer.streams);
-      videoRef.current.srcObject = peer.streams[0];
+      handleStream(peer.streams[0]);
     }
     
     return () => {
       // Cleanup
+      peer.off('stream', handleStream);
       if (videoRef.current && videoRef.current.srcObject) {
         const tracks = videoRef.current.srcObject.getTracks();
         tracks.forEach(track => track.stop());
+        videoRef.current.srcObject = null;
       }
     };
   }, [peer]);
   
-  return <video ref={videoRef} autoPlay playsInline />;
+  return (
+    <>
+      <video 
+        ref={videoRef} 
+        autoPlay 
+        playsInline 
+        onLoadedMetadata={() => console.log("Video loaded metadata")}
+      />
+      {!loaded && (
+        <div className="video-loading">
+          <div className="loading-spinner"></div>
+          <div>Connecting...</div>
+        </div>
+      )}
+    </>
+  );
 }
 
 export default VideoRoom;
