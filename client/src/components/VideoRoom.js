@@ -41,51 +41,52 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     // Clear any cached data from previous sessions
     clearCachedSessionData();
     
-    // Cleanup any existing socket connection
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-    }
-    
-    // Connect to the server
-    try {
-      console.log('Connecting to socket server at:', config.SOCKET_URL);
+    // Initialize socket connection
+    const initializeSocketConnection = () => {
+      console.log('Initializing socket connection to:', config.SOCKET_URL);
+      
+      // Create socket connection with room ID and username
       socketRef.current = io.connect(config.SOCKET_URL, {
         transports: ['websocket'],
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
         query: {
           roomId,
           username
         }
       });
       
-      // Verify socket connection
-      if (!socketRef.current || typeof socketRef.current.on !== 'function') {
-        console.error('Socket not initialized properly');
-        return;
-      }
+      // Handle socket connection events
+      socketRef.current.on('connect', () => {
+        console.log('Socket connected successfully with ID:', socketRef.current.id);
+        userIdRef.current = socketRef.current.id;
+        
+        // Join the room after socket is connected
+        socketRef.current.emit('join-room', roomId, socketRef.current.id, username);
+      });
       
-      // Handle socket connection error
       socketRef.current.on('connect_error', (error) => {
         console.error('Socket connection error:', error);
       });
       
-      // Handle socket connection timeout
-      socketRef.current.on('connect_timeout', () => {
-        console.error('Socket connection timeout');
+      socketRef.current.on('disconnect', (reason) => {
+        console.log('Socket disconnected:', reason);
+        
+        // Handle reconnection logic if needed
+        if (reason === 'io server disconnect') {
+          // The server has forcefully disconnected the socket
+          socketRef.current.connect();
+        }
       });
       
-      // Handle successful connection
-      socketRef.current.on('connect', () => {
-        console.log('Successfully connected to socket server');
-        
-        // Get the user's ID from the socket
-        userIdRef.current = socketRef.current.id;
-        console.log('Your socket ID:', userIdRef.current);
-        
-        // Initialize user media after socket connection is established
-        initializeUserMedia();
-      });
-    } catch (error) {
-      console.error('Error initializing socket connection:', error);
+      return true;
+    };
+    
+    // Initialize socket connection
+    if (!initializeSocketConnection()) {
+      console.error('Failed to initialize socket connection');
+      return;
     }
     
     // Cleanup function
@@ -104,6 +105,10 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
       .then(stream => {
         console.log('Got local user media stream:', stream);
         
+        // Store the stream ID globally for comparison
+        window.localStreamId = stream.id;
+        console.log('Set local stream ID:', window.localStreamId);
+        
         // Set the local stream
         userStream.current = stream;
         
@@ -115,7 +120,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
         // Join the room after media is initialized
         if (socketRef.current) {
           console.log('Joining room:', roomId);
-          socketRef.current.emit('join-room', roomId, username);
+          socketRef.current.emit('join-room', roomId, userIdRef.current, username);
           
           // Set up socket event listeners for room interactions
           setupSocketEventListeners();
@@ -932,79 +937,55 @@ function Video({ peer, peerID, username }) {
           console.error(`Error setting video srcObject for ${peerID}:`, err);
           setError(true);
         }
+      } else {
+        console.error(`Video ref is not available for ${peerID}`);
+        setError(true);
       }
     };
     
-    // Handle errors
-    const handleError = err => {
-      console.error(`Peer error in Video component for ${peerID}:`, err);
-      setError(true);
-    };
-    
-    // Add event listeners
+    // Add event listener for the 'stream' event
     peer.on('stream', handleStream);
-    peer.on('error', handleError);
     
-    // Check if we already have a stream
-    if (peer.streams && peer.streams.length > 0) {
-      console.log(`Peer ${peerID} already has streams:`, peer.streams);
-      handleStream(peer.streams[0]);
+    // Check if we already have a stream from this peer
+    if (peer._remoteStreams && peer._remoteStreams.length > 0) {
+      console.log(`Peer ${peerID} already has remote streams:`, peer._remoteStreams);
+      handleStream(peer._remoteStreams[0]);
     }
     
+    // Cleanup function
     return () => {
-      // Cleanup
       console.log(`Cleaning up video component for peer ${peerID}`);
       peer.off('stream', handleStream);
-      peer.off('error', handleError);
       
+      // Clean up video element
       if (videoRef.current && videoRef.current.srcObject) {
         const tracks = videoRef.current.srcObject.getTracks();
-        tracks.forEach(track => {
-          try {
-            track.stop();
-          } catch (err) {
-            console.error(`Error stopping track for ${peerID}:`, err);
-          }
-        });
+        tracks.forEach(track => track.stop());
         videoRef.current.srcObject = null;
       }
     };
   }, [peer, peerID, username]);
   
+  // Handle video element errors
+  const handleVideoError = (e) => {
+    console.error(`Error with video element for ${peerID}:`, e);
+    setError(true);
+  };
+  
   return (
-    <>
-      <video 
-        ref={videoRef} 
-        autoPlay 
-        playsInline 
-        onLoadedMetadata={() => {
-          console.log(`Video loaded metadata for ${peerID}`);
-          setLoaded(true);
-        }}
-        onError={(e) => {
-          console.error(`Video element error for ${peerID}:`, e);
-          setError(true);
-        }}
-      />
-      {!loaded && !error && (
-        <div className="video-loading">
-          <div className="loading-spinner"></div>
-          <div>Connecting to {username}...</div>
-        </div>
-      )}
+    <div className={`remote-video-wrapper ${error ? 'error' : ''} ${loaded ? 'loaded' : ''}`}>
       {error && (
         <div className="video-error">
-          <div>
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="8" x2="12" y2="12"></line>
-              <line x1="12" y1="16" x2="12.01" y2="16"></line>
-            </svg>
-            <div>Video connection error</div>
-          </div>
+          <p>Video unavailable</p>
         </div>
       )}
-    </>
+      <video 
+        ref={videoRef}
+        autoPlay 
+        playsInline
+        onError={handleVideoError}
+      />
+    </div>
   );
 }
 

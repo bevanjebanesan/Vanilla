@@ -197,51 +197,85 @@ io.on('connection', (socket) => {
           console.log(`Created new meeting in database: ${roomId}`);
         }
         
-        // Update meeting with new participant
-        await Meeting.findOneAndUpdate(
-          { meetingId: roomId },
-          { 
-            $push: { 
-              participants: { 
-                userId, 
-                username, 
-                joinedAt: new Date() 
-              } 
-            },
-            isActive: true
-          }
-        );
       } catch (error) {
-        console.error(`Error updating meeting in database: ${error.message}`);
+        console.error('Error checking/creating meeting:', error);
       }
     }
     
-    // Add user to room
-    roomUsers[roomId].push({
-      id: userId,
-      username,
-      socketId: socket.id
-    });
+    // Add user to room if not already in it
+    const userExists = roomUsers[roomId].find(user => user.id === userId);
+    if (!userExists) {
+      roomUsers[roomId].push({ id: userId, username, socketId: socket.id });
+    }
     
     // Join the socket room
     socket.join(roomId);
     
-    // Notify other users in the room
-    socket.to(roomId).emit('user-joined', userId, username);
+    // Emit to all users in the room that a new user has joined
+    socket.to(roomId).emit('user-joined', { userId, username });
     
-    // Send the list of users already in the room to the new user
+    // Send the list of existing users to the new user
     const usersInRoom = roomUsers[roomId].filter(user => user.id !== userId);
     socket.emit('all-users', usersInRoom);
     
-    console.log(`Room ${roomId} now has users:`, roomUsers[roomId]);
+    // Update the meeting participants in the database
+    try {
+      await Meeting.findOneAndUpdate(
+        { meetingId: roomId },
+        { $addToSet: { participants: { userId, username } } }
+      );
+    } catch (error) {
+      console.error('Error updating meeting participants:', error);
+    }
+  });
+  
+  // Handle call signaling
+  socket.on('callUser', ({ userToCall, signalData, from, name }) => {
+    console.log(`Call from ${name} (${from}) to ${userToCall}`);
     
-    // Handle user disconnection
-    socket.on('disconnect', async () => {
-      console.log(`User ${username} (${userId}) disconnected from room ${roomId}`);
-      
-      // Remove user from room
-      if (roomUsers[roomId]) {
-        roomUsers[roomId] = roomUsers[roomId].filter(user => user.id !== userId);
+    // Find the socket ID for the user to call
+    let socketId = userToCall;
+    
+    // Check all rooms to find the user's socket ID
+    for (const roomId in roomUsers) {
+      const user = roomUsers[roomId].find(u => u.id === userToCall);
+      if (user) {
+        socketId = user.socketId;
+        break;
+      }
+    }
+    
+    io.to(socketId).emit('callIncoming', { signal: signalData, from, name });
+  });
+  
+  // Handle call answer
+  socket.on('answerCall', ({ signal, to, name }) => {
+    console.log(`Call answered by ${name} to ${to}`);
+    
+    // Find the socket ID for the user to send the answer to
+    let socketId = to;
+    
+    // Check all rooms to find the user's socket ID
+    for (const roomId in roomUsers) {
+      const user = roomUsers[roomId].find(u => u.id === to);
+      if (user) {
+        socketId = user.socketId;
+        break;
+      }
+    }
+    
+    io.to(socketId).emit('callAccepted', { signal, from: socket.id, name });
+  });
+  
+  // Handle user disconnection
+  socket.on('disconnect', async () => {
+    console.log(`User disconnected from room`);
+    
+    // Remove user from room
+    for (const roomId in roomUsers) {
+      const userIndex = roomUsers[roomId].findIndex(user => user.socketId === socket.id);
+      if (userIndex !== -1) {
+        roomUsers[roomId].splice(userIndex, 1);
         
         // If room is empty, mark meeting as inactive in database
         if (roomUsers[roomId].length === 0) {
@@ -264,62 +298,11 @@ io.on('connection', (socket) => {
           console.log(`Room ${roomId} now has users:`, roomUsers[roomId]);
         }
       }
-      
-      // Notify other users in the room
-      socket.to(roomId).emit('user-left', userId);
-    });
-  });
-  
-  // Handle WebRTC signaling
-  socket.on('callUser', ({ userToCall, signalData, from, name }) => {
-    console.log(`Call request from ${name} (${from}) to user ID ${userToCall}`);
-    
-    // Find the socket ID for the user to call
-    let socketId = null;
-    
-    // Search through all rooms to find the user
-    Object.keys(roomUsers).forEach(roomId => {
-      const user = roomUsers[roomId].find(user => user.id === userToCall);
-      if (user) {
-        socketId = user.socketId;
-      }
-    });
-    
-    if (socketId) {
-      io.to(socketId).emit('callIncoming', {
-        signal: signalData,
-        from,
-        name
-      });
-      console.log(`Call signal sent to socket ${socketId}`);
-    } else {
-      console.log(`Could not find socket for user ${userToCall}`);
     }
-  });
-  
-  socket.on('answerCall', ({ signal, to, name }) => {
-    console.log(`Answer from ${name} to user ID ${to}`);
     
-    // Find the socket ID for the caller
-    let socketId = null;
-    
-    // Search through all rooms to find the user
-    Object.keys(roomUsers).forEach(roomId => {
-      const user = roomUsers[roomId].find(user => user.id === to);
-      if (user) {
-        socketId = user.socketId;
-      }
-    });
-    
-    if (socketId) {
-      io.to(socketId).emit('callAccepted', {
-        signal,
-        from: socket.id,
-        name
-      });
-      console.log(`Answer signal sent to socket ${socketId}`);
-    } else {
-      console.log(`Could not find socket for user ${to}`);
+    // Notify other users in the room
+    for (const roomId in roomUsers) {
+      socket.to(roomId).emit('user-left', socket.id);
     }
   });
   
