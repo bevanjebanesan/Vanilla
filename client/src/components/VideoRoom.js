@@ -644,18 +644,29 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
         </div>
       </div>
       
-      <div className={`video-grid ${peers.length === 0 ? 'single-participant' : ''}`}>
-        <div className="video-container">
+      <div className="room-content">
+        {/* Remote participants' videos - displayed in larger windows */}
+        <div className={`video-grid ${peers.length === 0 ? 'single-participant' : ''}`}>
+          {peers.length > 0 ? (
+            peers.map((peer) => (
+              <div className="video-container remote-view" key={peer.peerID}>
+                <Video peer={peer.peer} />
+                <div className="video-username">{peer.username}</div>
+              </div>
+            ))
+          ) : (
+            <div className="waiting-message">
+              <div className="loading-spinner"></div>
+              <p>Waiting for others to join...</p>
+            </div>
+          )}
+        </div>
+        
+        {/* Local user's video - displayed as a smaller self-view */}
+        <div className="video-container self-view">
           <video ref={userVideo} autoPlay muted playsInline />
           <div className="video-username">{username} (You)</div>
         </div>
-        
-        {peers.map((peer) => (
-          <div className="video-container" key={peer.peerID}>
-            <Video peer={peer.peer} />
-            <div className="video-username">{peer.username}</div>
-          </div>
-        ))}
       </div>
       
       <div className="video-controls">
