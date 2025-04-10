@@ -89,22 +89,22 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
           // Create a peer connection to the new user
           const peer = createPeer(userId, userIdRef.current, userStream.current, username);
           
-          peersRef.current.push({
+          // Store peer with metadata
+          const peerObj = {
             peerID: userId,
             peer,
             username
-          });
+          };
           
+          peersRef.current.push(peerObj);
+          
+          // Update the state to trigger re-render
           setPeers(prevPeers => {
             // Check if this peer is already in the array
             if (prevPeers.some(p => p.peerID === userId)) {
               return prevPeers;
             }
-            return [...prevPeers, {
-              peerID: userId,
-              peer,
-              username
-            }];
+            return [...prevPeers, peerObj];
           });
         });
         
@@ -120,24 +120,25 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
             return;
           }
           
+          // Create a new peer connection as the receiver
           const peer = addPeer(signal, from, userStream.current, username);
           
-          peersRef.current.push({
+          // Store peer with metadata
+          const peerObj = {
             peerID: from,
             peer,
             username: name
-          });
+          };
           
+          peersRef.current.push(peerObj);
+          
+          // Update the state to trigger re-render
           setPeers(prevPeers => {
             // Check if this peer is already in the array
             if (prevPeers.some(p => p.peerID === from)) {
               return prevPeers;
             }
-            return [...prevPeers, {
-              peerID: from,
-              peer,
-              username: name
-            }];
+            return [...prevPeers, peerObj];
           });
         });
         
@@ -165,22 +166,22 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
             
             const peer = createPeer(user.id, userIdRef.current, userStream.current, username);
             
-            peersRef.current.push({
+            // Store peer with metadata
+            const peerObj = {
               peerID: user.id,
               peer,
               username: user.username
-            });
+            };
             
+            peersRef.current.push(peerObj);
+            
+            // Update the state to trigger re-render
             setPeers(prevPeers => {
               // Check if this peer is already in the array
               if (prevPeers.some(p => p.peerID === user.id)) {
                 return prevPeers;
               }
-              return [...prevPeers, {
-                peerID: user.id,
-                peer,
-                username: user.username
-              }];
+              return [...prevPeers, peerObj];
             });
           });
         });
@@ -358,7 +359,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     const peer = new Peer({
       initiator: true,
       trickle: false,
-      stream,
+      stream, // We're sending our local stream to the remote peer
       config: {
         iceServers: config.ICE_SERVERS
       }
@@ -376,7 +377,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     
     peer.on('stream', remoteStream => {
       console.log(`Received stream from peer ${userToCall}`, remoteStream);
-      // The Video component will handle this stream
+      // The Video component will handle displaying this remote stream
     });
     
     peer.on('connect', () => {
@@ -401,7 +402,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     const peer = new Peer({
       initiator: false,
       trickle: false,
-      stream,
+      stream, // We're sending our local stream to the remote peer
       config: {
         iceServers: config.ICE_SERVERS
       }
@@ -418,7 +419,7 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
     
     peer.on('stream', remoteStream => {
       console.log(`Received stream from peer ${callerId}`, remoteStream);
-      // The Video component will handle this stream
+      // The Video component will handle displaying this remote stream
     });
     
     peer.on('connect', () => {
@@ -666,10 +667,14 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
         {/* Remote participants' videos - displayed in larger windows */}
         <div className={`video-grid ${peers.length === 0 ? 'single-participant' : ''}`}>
           {peers.length > 0 ? (
-            peers.map((peer) => (
-              <div className="video-container remote-view" key={peer.peerID}>
-                <Video peer={peer.peer} />
-                <div className="video-username">{peer.username}</div>
+            peers.map((peerData) => (
+              <div className="video-container remote-view" key={peerData.peerID}>
+                <Video 
+                  peer={peerData.peer} 
+                  peerID={peerData.peerID}
+                  username={peerData.username}
+                />
+                <div className="video-username">{peerData.username}</div>
               </div>
             ))
           ) : (
@@ -793,35 +798,50 @@ const VideoRoom = ({ roomId, username, onLeave }) => {
 };
 
 // Helper component to display remote video
-function Video({ peer }) {
+function Video({ peer, peerID, username }) {
   const videoRef = useRef();
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
   
   useEffect(() => {
-    console.log("Setting up video ref for peer");
+    console.log(`Setting up video ref for peer ${peerID} (${username})`);
     
     if (!peer) {
-      console.error("No peer provided to Video component");
+      console.error(`No peer provided to Video component for ${peerID} (${username})`);
       setError(true);
       return;
     }
     
     // Handle when we get a stream from the peer
     const handleStream = remoteStream => {
-      console.log("Received remote stream in Video component", remoteStream);
+      console.log(`Received remote stream in Video component from ${peerID} (${username})`, remoteStream);
       
-      // Verify this is a remote stream by checking track IDs
-      // This helps prevent the local stream from being displayed in the remote view
+      if (!remoteStream || !remoteStream.getTracks || remoteStream.getTracks().length === 0) {
+        console.error(`Invalid remote stream received from ${peerID} (${username})`);
+        setError(true);
+        return;
+      }
+      
+      // Log track information to help with debugging
+      const videoTracks = remoteStream.getVideoTracks();
+      console.log(`Remote stream from ${peerID} has ${videoTracks.length} video tracks:`, 
+        videoTracks.map(track => ({ 
+          id: track.id, 
+          kind: track.kind, 
+          enabled: track.enabled,
+          readyState: track.readyState
+        }))
+      );
+      
       if (videoRef.current) {
         try {
           // Set the remote stream as the source for this video element
           videoRef.current.srcObject = remoteStream;
-          console.log("Successfully set remote stream to video element");
+          console.log(`Successfully set remote stream from ${peerID} to video element`);
           setLoaded(true);
           setError(false);
         } catch (err) {
-          console.error("Error setting video srcObject:", err);
+          console.error(`Error setting video srcObject for ${peerID}:`, err);
           setError(true);
         }
       }
@@ -829,7 +849,7 @@ function Video({ peer }) {
     
     // Handle errors
     const handleError = err => {
-      console.error("Peer error in Video component:", err);
+      console.error(`Peer error in Video component for ${peerID}:`, err);
       setError(true);
     };
     
@@ -839,12 +859,13 @@ function Video({ peer }) {
     
     // Check if we already have a stream
     if (peer.streams && peer.streams.length > 0) {
-      console.log("Peer already has streams:", peer.streams);
+      console.log(`Peer ${peerID} already has streams:`, peer.streams);
       handleStream(peer.streams[0]);
     }
     
     return () => {
       // Cleanup
+      console.log(`Cleaning up video component for peer ${peerID}`);
       peer.off('stream', handleStream);
       peer.off('error', handleError);
       
@@ -854,13 +875,13 @@ function Video({ peer }) {
           try {
             track.stop();
           } catch (err) {
-            console.error("Error stopping track:", err);
+            console.error(`Error stopping track for ${peerID}:`, err);
           }
         });
         videoRef.current.srcObject = null;
       }
     };
-  }, [peer]);
+  }, [peer, peerID, username]);
   
   return (
     <>
@@ -869,18 +890,18 @@ function Video({ peer }) {
         autoPlay 
         playsInline 
         onLoadedMetadata={() => {
-          console.log("Video loaded metadata");
+          console.log(`Video loaded metadata for ${peerID}`);
           setLoaded(true);
         }}
         onError={(e) => {
-          console.error("Video element error:", e);
+          console.error(`Video element error for ${peerID}:`, e);
           setError(true);
         }}
       />
       {!loaded && !error && (
         <div className="video-loading">
           <div className="loading-spinner"></div>
-          <div>Connecting...</div>
+          <div>Connecting to {username}...</div>
         </div>
       )}
       {error && (
