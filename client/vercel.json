@@ -2,7 +2,10 @@
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ],
-  "buildCommand": "npm run build",
+  "buildCommand": "export NODE_OPTIONS=--openssl-legacy-provider && npm run build",
   "outputDirectory": "build",
-  "framework": "create-react-app"
+  "framework": "create-react-app",
+  "env": {
+    "NODE_OPTIONS": "--openssl-legacy-provider"
+  }
 }
