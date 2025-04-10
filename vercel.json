@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "client/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "client/build",
+        "buildCommand": "cd client && npm install && npm run build"
+      }
+    }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "/client/build/$1" }
+  ]
+}
