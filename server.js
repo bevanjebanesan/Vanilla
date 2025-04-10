@@ -175,164 +175,119 @@ const io = socketIo(server, {
 });
 
 // Store active users in rooms
-const roomUsers = {};
+const rooms = {};
 
+// Socket.io connection handling
 io.on('connection', (socket) => {
-  console.log(`New connection: ${socket.id}`);
-
-  // When a user joins a room
-  socket.on('join-room', async (roomId, userId, username) => {
-    console.log(`User ${username} (${userId}) joined room ${roomId}`);
+  console.log(`User connected: ${socket.id}`);
+  
+  // Get roomId and username from query parameters
+  const { roomId, username } = socket.handshake.query;
+  
+  if (!roomId) {
+    console.error('No roomId provided in socket connection');
+    return;
+  }
+  
+  // Join room when user explicitly sends join-room event
+  socket.on('join-room', (roomId, userId, username) => {
+    console.log(`User ${username} (${userId}) joining room: ${roomId}`);
     
-    // Initialize room if it doesn't exist
-    if (!roomUsers[roomId]) {
-      roomUsers[roomId] = [];
-      
-      // Check if meeting exists in database, create if not
-      try {
-        let meeting = await Meeting.findOne({ meetingId: roomId });
-        if (!meeting) {
-          meeting = new Meeting({ meetingId: roomId, hostId: userId });
-          await meeting.save();
-          console.log(`Created new meeting in database: ${roomId}`);
-        }
-        
-      } catch (error) {
-        console.error('Error checking/creating meeting:', error);
-      }
-    }
-    
-    // Add user to room if not already in it
-    const userExists = roomUsers[roomId].find(user => user.id === userId);
-    if (!userExists) {
-      roomUsers[roomId].push({ id: userId, username, socketId: socket.id });
-    }
-    
-    // Join the socket room
+    // Join the socket.io room
     socket.join(roomId);
     
-    // Emit to all users in the room that a new user has joined
+    // Store user data in the room
+    if (!rooms[roomId]) {
+      rooms[roomId] = { users: [] };
+    }
+    
+    // Add user to room if not already in
+    const existingUser = rooms[roomId].users.find(user => user.id === userId);
+    if (!existingUser) {
+      rooms[roomId].users.push({ id: userId, username });
+    }
+    
+    // Get all other users in the room
+    const otherUsers = rooms[roomId].users.filter(user => user.id !== userId);
+    
+    // Send all existing users to the new user
+    socket.emit('all-users', otherUsers);
+    
+    // Notify all users in the room about the new user
     socket.to(roomId).emit('user-joined', { userId, username });
     
-    // Send the list of existing users to the new user
-    const usersInRoom = roomUsers[roomId].filter(user => user.id !== userId);
-    socket.emit('all-users', usersInRoom);
-    
-    // Update the meeting participants in the database
-    try {
-      await Meeting.findOneAndUpdate(
-        { meetingId: roomId },
-        { $addToSet: { participants: { userId, username } } }
-      );
-    } catch (error) {
-      console.error('Error updating meeting participants:', error);
-    }
+    console.log(`Room ${roomId} now has ${rooms[roomId].users.length} users`);
   });
   
   // Handle call signaling
   socket.on('callUser', ({ userToCall, signalData, from, name }) => {
     console.log(`Call from ${name} (${from}) to ${userToCall}`);
-    
-    // Find the socket ID for the user to call
-    let socketId = userToCall;
-    
-    // Check all rooms to find the user's socket ID
-    for (const roomId in roomUsers) {
-      const user = roomUsers[roomId].find(u => u.id === userToCall);
-      if (user) {
-        socketId = user.socketId;
-        break;
-      }
-    }
-    
-    io.to(socketId).emit('callIncoming', { signal: signalData, from, name });
+    io.to(userToCall).emit('callIncoming', { signal: signalData, from, name });
   });
   
   // Handle call answer
   socket.on('answerCall', ({ signal, to, name }) => {
     console.log(`Call answered by ${name} to ${to}`);
-    
-    // Find the socket ID for the user to send the answer to
-    let socketId = to;
-    
-    // Check all rooms to find the user's socket ID
-    for (const roomId in roomUsers) {
-      const user = roomUsers[roomId].find(u => u.id === to);
-      if (user) {
-        socketId = user.socketId;
-        break;
-      }
-    }
-    
-    io.to(socketId).emit('callAccepted', { signal, from: socket.id, name });
-  });
-  
-  // Handle user disconnection
-  socket.on('disconnect', async () => {
-    console.log(`User disconnected from room`);
-    
-    // Remove user from room
-    for (const roomId in roomUsers) {
-      const userIndex = roomUsers[roomId].findIndex(user => user.socketId === socket.id);
-      if (userIndex !== -1) {
-        roomUsers[roomId].splice(userIndex, 1);
-        
-        // If room is empty, mark meeting as inactive in database
-        if (roomUsers[roomId].length === 0) {
-          try {
-            await Meeting.findOneAndUpdate(
-              { meetingId: roomId },
-              { 
-                isActive: false,
-                endTime: new Date()
-              }
-            );
-            console.log(`Meeting ${roomId} marked as inactive in database`);
-          } catch (error) {
-            console.error(`Error updating meeting in database: ${error.message}`);
-          }
-          
-          delete roomUsers[roomId];
-          console.log(`Room ${roomId} deleted (empty)`);
-        } else {
-          console.log(`Room ${roomId} now has users:`, roomUsers[roomId]);
-        }
-      }
-    }
-    
-    // Notify other users in the room
-    for (const roomId in roomUsers) {
-      socket.to(roomId).emit('user-left', socket.id);
-    }
+    io.to(to).emit('callAccepted', { signal, from: socket.id, name });
   });
   
   // Handle chat messages
-  socket.on('send-message', async (message) => {
-    console.log(`Message from ${message.username} in room ${message.roomId}: ${message.message}`);
-    
-    // Save message to database
-    try {
-      const chatMessage = new ChatMessage({
-        meetingId: message.roomId,
-        userId: message.userId,
-        username: message.username,
-        message: message.message
-      });
-      await chatMessage.save();
-    } catch (error) {
-      console.error(`Error saving chat message to database: ${error.message}`);
-    }
-    
-    // Broadcast message to all users in the room
-    socket.to(message.roomId).emit('receive-message', message);
+  socket.on('send-message', (roomId, message) => {
+    console.log(`Message in room ${roomId} from ${message.username}: ${message.message}`);
+    socket.to(roomId).emit('receive-message', message);
   });
   
-  // Handle speech-to-text transcripts
-  socket.on('send-transcript', (transcript) => {
-    console.log(`Transcript from ${transcript.username} in room ${transcript.roomId}`);
+  // Handle disconnection
+  socket.on('disconnect', () => {
+    console.log(`User disconnected: ${socket.id}`);
     
-    // Broadcast transcript to all users in the room
-    socket.to(transcript.roomId).emit('receive-transcript', transcript);
+    // Find which room this user was in
+    const roomsWithUser = Object.entries(rooms).filter(([_, room]) => 
+      room.users.some(user => user.id === socket.id)
+    );
+    
+    // Remove user from all rooms they were in
+    roomsWithUser.forEach(([roomId, room]) => {
+      console.log(`Removing user ${socket.id} from room ${roomId}`);
+      
+      // Filter out the disconnected user
+      room.users = room.users.filter(user => user.id !== socket.id);
+      
+      // Notify other users in the room
+      socket.to(roomId).emit('user-left', socket.id);
+      
+      // Clean up empty rooms
+      if (room.users.length === 0) {
+        console.log(`Room ${roomId} is now empty, cleaning up`);
+        delete rooms[roomId];
+      } else {
+        console.log(`Room ${roomId} now has ${room.users.length} users`);
+      }
+    });
+  });
+  
+  // Handle explicit room leaving
+  socket.on('leave-room', (roomId) => {
+    console.log(`User ${socket.id} leaving room ${roomId}`);
+    
+    if (rooms[roomId]) {
+      // Remove user from room
+      rooms[roomId].users = rooms[roomId].users.filter(user => user.id !== socket.id);
+      
+      // Notify other users in the room
+      socket.to(roomId).emit('user-left', socket.id);
+      
+      // Leave the socket.io room
+      socket.leave(roomId);
+      
+      // Clean up empty rooms
+      if (rooms[roomId].users.length === 0) {
+        console.log(`Room ${roomId} is now empty, cleaning up`);
+        delete rooms[roomId];
+      } else {
+        console.log(`Room ${roomId} now has ${rooms[roomId].users.length} users`);
+      }
+    }
   });
 });
 
